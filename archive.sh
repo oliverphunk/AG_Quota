@@ -77,7 +77,7 @@ cat <<EOF > AGQuota.xcarchive/Info.plist
 			<string>arm64</string>
 		</array>
 		<key>CFBundleIdentifier</key>
-		<string>com.iservice.AGQuota</string>
+		<string>com.oliverottner.AGQuota</string>
 		<key>CFBundleShortVersionString</key>
 		<string>1.1.3</string>
 		<key>CFBundleVersion</key>
