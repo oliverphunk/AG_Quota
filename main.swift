@@ -45,7 +45,7 @@ struct QuotaBucket: Codable {
 }
 
 struct LSConfig {
-    let port: Int
+    let ports: [Int]
     let token: String
 }
 
@@ -651,7 +651,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let manualPort = UserDefaults.standard.integer(forKey: "manualPort")
         let manualToken = UserDefaults.standard.string(forKey: "manualToken") ?? ""
         if manualPort > 0 && !manualToken.isEmpty {
-            return LSConfig(port: manualPort, token: manualToken)
+            return LSConfig(ports: [manualPort], token: manualToken)
         }
         
         return nil
@@ -694,8 +694,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     let pid = nsLine.substring(with: pidMatch.range(at: 1))
                     
-                    if let port = getLSPort(pid: pid) {
-                        return LSConfig(port: port, token: token)
+                    let ports = getLSPorts(pid: pid)
+                    if !ports.isEmpty {
+                        return LSConfig(ports: ports, token: token)
                     }
                 }
             }
@@ -705,7 +706,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
     
-    func getLSPort(pid: String) -> Int? {
+    func getLSPorts(pid: String) -> [Int] {
         let lsofProcess = Process()
         lsofProcess.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
         // Added "-a" to logically AND the process and network filters, preventing massive logs and hangs
@@ -721,10 +722,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let lsofData = lsofPipe.fileHandleForReading.readDataToEndOfFile()
             lsofProcess.waitUntilExit()
             
-            guard let lsofOutput = String(data: lsofData, encoding: .utf8) else { return nil }
+            guard let lsofOutput = String(data: lsofData, encoding: .utf8) else { return [] }
             
             let lines = lsofOutput.split(separator: "\n")
-            var ports: [Int] = []
+            var portsSet = Set<Int>()
             for line in lines {
                 let lineStr = String(line)
                 let nsLine = lineStr as NSString
@@ -732,17 +733,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let portRegex = try NSRegularExpression(pattern: portPattern)
                 if let portMatch = portRegex.firstMatch(in: lineStr, options: [], range: NSRange(location: 0, length: nsLine.length)) {
                     if let port = Int(nsLine.substring(with: portMatch.range(at: 1))) {
-                        ports.append(port)
+                        portsSet.insert(port)
                     }
                 }
             }
             
-            ports.sort()
-            return ports.last // The higher port is HTTP, which we use to bypass SSL validation
+            return Array(portsSet).sorted()
         } catch {
-            print("Error retrieving port: \(error)")
+            print("Error retrieving ports: \(error)")
         }
-        return nil
+        return []
     }
     
     func fetchQuota(completion: @escaping (NSAttributedString) -> Void) {
@@ -751,38 +751,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
-        let urlString = "http://127.0.0.1:\(config.port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
+        tryNextPort(ports: config.ports, token: config.token, index: 0, completion: completion)
+    }
+    
+    func tryNextPort(ports: [Int], token: String, index: Int, completion: @escaping (NSAttributedString) -> Void) {
+        guard index < ports.count else {
+            completion(NSAttributedString(string: " AG Quota: Err "))
+            return
+        }
+        
+        let port = ports[index]
+        let urlString = "http://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
         guard let url = URL(string: urlString) else {
-            completion(NSAttributedString(string: " AG Quota: Err Url "))
+            tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
             return
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(config.token, forHTTPHeaderField: "x-codeium-csrf-token")
+        request.setValue(token, forHTTPHeaderField: "x-codeium-csrf-token")
         request.httpBody = "{}".data(using: .utf8)
+        request.timeoutInterval = 2.0
         
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
-                print("Fetch error: \(error)")
-                completion(NSAttributedString(string: " AG Quota: Err "))
+                print("Fetch error for port \(port): \(error)")
+                self?.tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
                 return
             }
             
-            guard let data = data else {
-                completion(NSAttributedString(string: " AG Quota: No Data "))
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let data = data else {
+                print("Invalid response or status code for port \(port)")
+                self?.tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
                 return
             }
             
             do {
                 let decoder = JSONDecoder()
                 let quotaResponse = try decoder.decode(QuotaSummaryResponse.self, from: data)
-                let formattedText = self.formatQuotaSummary(quotaResponse)
+                let formattedText = self?.formatQuotaSummary(quotaResponse) ?? NSAttributedString(string: "")
                 completion(formattedText)
             } catch {
-                print("Decoding error: \(error)")
-                completion(NSAttributedString(string: " AG Quota: Parse Err "))
+                print("Decoding error for port \(port): \(error)")
+                self?.tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
             }
         }
         task.resume()
