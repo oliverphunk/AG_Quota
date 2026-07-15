@@ -137,8 +137,8 @@ The app is automatically refreshed every 30 seconds to stay relatively real-time
             .paragraphStyle: infoParagraphStyle
         ]))
         
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.2"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "18"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.3"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "19"
         infoAttrText.append(NSAttributedString(string: "Version \(version) (\(build))\nCopyright © 2026 Oliver Ottner\nwww.iservice.at // All rights reserved.\nMade with love in Europe", attributes: [
             .font: infoFont,
             .foregroundColor: NSColor.secondaryLabelColor,
