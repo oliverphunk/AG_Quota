@@ -137,8 +137,8 @@ The app is automatically refreshed every 30 seconds to stay relatively real-time
             .paragraphStyle: infoParagraphStyle
         ]))
         
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.3"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "19"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.4"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "20"
         infoAttrText.append(NSAttributedString(string: "Version \(version) (\(build))\nCopyright © 2026 Oliver Ottner\nwww.iservice.at // All rights reserved.\nMade with love in Europe", attributes: [
             .font: infoFont,
             .foregroundColor: NSColor.secondaryLabelColor,
@@ -491,6 +491,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         setupMenu()
         
+        // Ensure autostart with system is enabled
+        if !isLoginItemEnabled() {
+            enableAutostart()
+        }
+        
         // Refresh every 30 seconds to be relatively real-time
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.refreshQuota()
@@ -524,7 +529,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         let autostartItem = NSMenuItem(title: "Autostart with System", action: #selector(toggleAutostart), keyEquivalent: "")
         autostartItem.target = self
-        autostartItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        autostartItem.state = isLoginItemEnabled() ? .on : .off
         menu.addItem(autostartItem)
         
         menu.addItem(NSMenuItem.separator())
@@ -540,6 +545,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
         menu.addItem(quitItem)
         
         statusItem.menu = menu
@@ -547,6 +553,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc func menuClicked() {
         // App status items with custom menus handle clicks automatically
+    }
+    
+    func isLoginItemEnabled() -> Bool {
+        if SMAppService.mainApp.status == .enabled {
+            return true
+        }
+        let script = "tell application \"System Events\" to get (exists login item \"AGQuota\")"
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            let result = appleScript.executeAndReturnError(&error)
+            if let desc = result.stringValue {
+                return desc == "true"
+            }
+            return result.booleanValue
+        }
+        return false
+    }
+    
+    func enableAutostart() {
+        do {
+            try SMAppService.mainApp.register()
+        } catch {
+            let bundlePath = Bundle.main.bundlePath
+            let script = "tell application \"System Events\" to make login item at end with properties {path:\"\(bundlePath)\", hidden:false, name:\"AGQuota\"}"
+            if let appleScript = NSAppleScript(source: script) {
+                var error: NSDictionary?
+                appleScript.executeAndReturnError(&error)
+            }
+        }
+    }
+    
+    func disableAutostart() {
+        try? SMAppService.mainApp.unregister()
+        let script = "tell application \"System Events\" to delete (every login item whose name is \"AGQuota\")"
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+        }
     }
     
     @objc func toggleGemini(_ sender: NSMenuItem) {
@@ -578,21 +622,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func toggleAutostart(_ sender: NSMenuItem) {
-        let service = SMAppService.mainApp
-        if service.status == .enabled {
-            do {
-                try service.unregister()
-                sender.state = .off
-            } catch {
-                print("Failed to unregister autostart: \(error)")
-            }
+        if sender.state == .on {
+            disableAutostart()
+            sender.state = .off
         } else {
-            do {
-                try service.register()
-                sender.state = .on
-            } catch {
-                print("Failed to register autostart: \(error)")
-            }
+            enableAutostart()
+            sender.state = .on
         }
     }
     
@@ -771,8 +806,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "x-codeium-csrf-token")
-        request.httpBody = "{}".data(using: .utf8)
-        request.timeoutInterval = 2.0
+        request.httpBody = "{\"force_refresh\": true}".data(using: .utf8)
+        request.timeoutInterval = 3.0
         
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
@@ -841,25 +876,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             var fiveHourTime = ""
             
             for bucket in group.buckets {
-                let pct = Int(round(bucket.remainingFraction * 100))
+                var fraction = bucket.remainingFraction
+                if let resetDate = isoFormatter.date(from: bucket.resetTime), resetDate <= Date() {
+                    // Reset time has already elapsed, quota has refreshed
+                    fraction = max(fraction, 1.0)
+                }
+                
+                let pct = Int(round(fraction * 100))
                 let pctStr = "\(pct)%"
                 
                 var timeStr = ""
                 if showRefreshTime, let date = isoFormatter.date(from: bucket.resetTime) {
-                    if bucket.window == "weekly" {
-                        timeStr = " (\(weeklyFormatter.string(from: date)))"
-                    } else if bucket.window == "5h" {
-                        timeStr = " (\(fiveHourFormatter.string(from: date)))"
+                    if date > Date() {
+                        if bucket.window == "weekly" {
+                            timeStr = " (\(weeklyFormatter.string(from: date)))"
+                        } else if bucket.window == "5h" {
+                            timeStr = " (\(fiveHourFormatter.string(from: date)))"
+                        }
                     }
                 }
                 
                 if bucket.window == "weekly" {
                     weeklyPct = pctStr
-                    weeklyFraction = bucket.remainingFraction
+                    weeklyFraction = fraction
                     weeklyTime = timeStr
                 } else if bucket.window == "5h" {
                     fiveHourPct = pctStr
-                    fiveHourFraction = bucket.remainingFraction
+                    fiveHourFraction = fraction
                     fiveHourTime = timeStr
                 }
             }
