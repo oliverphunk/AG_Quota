@@ -474,8 +474,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.register(defaults: [
             "showGemini": true,
             "showClaude": true,
-            "showRefreshTime": true,
-            "showTimeframe": true,
+            "showRefreshTime": false,
+            "showTimeframe": false,
             "useAutoDetect": true,
             "manualPort": 0,
             "manualToken": ""
