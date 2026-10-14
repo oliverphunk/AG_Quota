@@ -38,6 +38,7 @@ fi
 # 6. Relaunch app
 echo "Restarting application..."
 killall AGQuota 2>/dev/null || true
+sleep 0.5
 open AGQuota.app || true
 
 echo "=== Build and Run Successful! ==="

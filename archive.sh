@@ -79,9 +79,9 @@ cat <<EOF > AGQuota.xcarchive/Info.plist
 		<key>CFBundleIdentifier</key>
 		<string>com.oliverottner.AGQuota</string>
 		<key>CFBundleShortVersionString</key>
-		<string>1.1.4</string>
+		<string>1.1.5</string>
 		<key>CFBundleVersion</key>
-		<string>20</string>
+		<string>21</string>
 		<key>SigningIdentity</key>
 		<string>$SIGNING_IDENTITY</string>
 	</dict>

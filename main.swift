@@ -137,8 +137,8 @@ The app is automatically refreshed every 30 seconds to stay relatively real-time
             .paragraphStyle: infoParagraphStyle
         ]))
         
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.4"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "20"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.5"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "21"
         infoAttrText.append(NSAttributedString(string: "Version \(version) (\(build))\nCopyright © 2026 Oliver Ottner\nwww.iservice.at // All rights reserved.\nMade with love in Europe", attributes: [
             .font: infoFont,
             .foregroundColor: NSColor.secondaryLabelColor,
@@ -496,6 +496,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             enableAutostart()
         }
         
+        // Observe sleep wake notification to refresh instantly upon wake-up
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(wakeNotificationReceived),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
         // Refresh every 30 seconds to be relatively real-time
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.refreshQuota()
@@ -506,6 +514,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func setupMenu() {
         let menu = NSMenu()
+        
+        let refreshNowItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshQuota), keyEquivalent: "r")
+        refreshNowItem.target = self
+        menu.addItem(refreshNowItem)
+        menu.addItem(NSMenuItem.separator())
         
         let geminiItem = NSMenuItem(title: "Gemini", action: #selector(toggleGemini), keyEquivalent: "")
         geminiItem.target = self
@@ -660,12 +673,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func refreshQuota() {
-        fetchQuota { [weak self] attrText in
-            DispatchQueue.main.async {
-                if let button = self?.statusItem.button {
-                    button.attributedTitle = attrText
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.fetchQuota { attrText in
+                DispatchQueue.main.async {
+                    if let button = self?.statusItem.button {
+                        button.attributedTitle = attrText
+                    }
                 }
             }
+        }
+    }
+    
+    @objc func wakeNotificationReceived() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.refreshQuota()
         }
     }
     
