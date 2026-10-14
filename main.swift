@@ -525,7 +525,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         geminiItem.state = UserDefaults.standard.bool(forKey: "showGemini") ? .on : .off
         menu.addItem(geminiItem)
         
-        let claudeItem = NSMenuItem(title: "Claude/GPT", action: #selector(toggleClaude), keyEquivalent: "")
+        let claudeItem = NSMenuItem(title: "Others", action: #selector(toggleClaude), keyEquivalent: "")
         claudeItem.target = self
         claudeItem.state = UserDefaults.standard.bool(forKey: "showClaude") ? .on : .off
         menu.addItem(claudeItem)
@@ -989,7 +989,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         if showClaude {
             let prefix = showGemini ? "" : "  "
-            attributedString.append(NSAttributedString(string: "\(prefix)CLAUDE/GPT*", attributes: [.font: boldFont]))
+            attributedString.append(NSAttributedString(string: "\(prefix)OTHERS*", attributes: [.font: boldFont]))
             attributedString.append(claudeBody)
         }
         

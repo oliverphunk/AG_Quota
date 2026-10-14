@@ -13,10 +13,10 @@ AG Quota Monitor
 Local Token Limits At A Glance
 
 ### Promotional Text (Max 170 chars)
-Monitor your local Gemini & Claude token quotas in real-time from your menu bar. Zero credentials required, 100% local and secure.
+Monitor your local Gemini & Others token quotas in real-time from your menu bar. Zero credentials required, 100% local and secure.
 
 ### App Store Keywords (Max 100 chars total, comma-separated)
-antigravity,quota,token,limit,gemini,claude,gpt,developer,api,menu bar,local,offline,codeium,monitor
+antigravity,quota,token,limit,gemini,others,developer,api,menu bar,local,offline,codeium,monitor
 
 ---
 
@@ -24,7 +24,7 @@ antigravity,quota,token,limit,gemini,claude,gpt,developer,api,menu bar,local,off
 
 Stay in the flow and never get interrupted by token limits again! 
 
-**AG Quota Monitor** is a native, ultra-lightweight macOS status bar utility built specifically for developers using Google Antigravity. It sits quietly in your menu bar, providing real-time, color-coded visibility into your rolling weekly and 5-hour token limits for Gemini and Claude/GPT models.
+**AG Quota Monitor** is a native, ultra-lightweight macOS status bar utility built specifically for developers using Google Antigravity. It sits quietly in your menu bar, providing real-time, color-coded visibility into your rolling weekly and 5-hour token limits for Gemini and Others models.
 
 ### Key Features:
 * **Real-Time Tracking:** Auto-refreshes every 30 seconds so you always know how much quota you have remaining.
