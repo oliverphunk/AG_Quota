@@ -60,10 +60,28 @@ You can toggle between a compact percentages-only layout and a full layout showi
 
 ## Installation & Distribution
 
-You can download the application directly from the repository root:
-- **[Download AGQuota.dmg (Recommended)](AGQuota.dmg)** — Double-click the disk image and drag the app to your `/Applications` folder.
+### Option 1: Pre-Built Disk Image (Ready to Run)
+A signed & notarized build is available directly in the repository for convenience:
+- **[Download AGQuota.dmg](AGQuota.dmg)** — Double-click the disk image and drag the app into your `/Applications` folder.
 
-Alternatively, you can get the package from the **[Latest GitHub Releases](https://github.com/oliverottner/AG_Quota/releases/latest)**.
+> **Security & Notarization:**
+> The pre-compiled `.dmg` is code-signed and notarized by Apple so it launches immediately without Gatekeeper security warnings. 
+
+### Option 2: Build from Source (Fork & Compile on your own)
+AG Quota is completely open source under **GPLv3**. You don't have to trust any pre-built binary: you can inspect every line of code, fork the repo, and build it natively on your Mac with standard Apple Developer tools:
+
+```bash
+# 1. Clone or fork the repository
+git clone https://github.com/oliverphunk/AG_Quota.git
+cd AG_Quota
+
+# 2. Compile natively using the included build script
+./build.sh
+
+# 3. Launch the app
+open AGQuota.app
+```
+*(You can also open and build `AGQuota.xcodeproj` directly in Xcode.)*
 
 ---
 

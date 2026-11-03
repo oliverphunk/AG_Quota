@@ -803,7 +803,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func fetchQuota(completion: @escaping (NSAttributedString) -> Void) {
         guard let config = getLSConfig() else {
-            completion(NSAttributedString(string: " AG Quota: Off "))
+            completion(NSAttributedString(string: " AG Quota: Antigravity not running "))
             return
         }
         
