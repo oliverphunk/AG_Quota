@@ -463,11 +463,30 @@ class SettingsWindowController: NSObject, NSTextFieldDelegate {
     }
 }
 
+final class LocalhostSessionDelegate: NSObject, URLSessionDelegate {
+    static let shared = LocalhostSessionDelegate()
+    
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust,
+           (challenge.protectionSpace.host == "127.0.0.1" || challenge.protectionSpace.host == "localhost") {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var timer: Timer?
     var helpWindowController: HelpWindowController?
     var settingsWindowController: SettingsWindowController?
+    let urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 3.0
+        return URLSession(configuration: config, delegate: LocalhostSessionDelegate.shared, delegateQueue: nil)
+    }()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Register default preferences
@@ -713,6 +732,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
     
+    func getLSToken(pid: String, line: String) -> String? {
+        // 1. Check CLI argv for older Antigravity versions (--csrf_token <uuid>)
+        let tokenPattern = "--csrf_token\\s+([a-f0-9-]+)"
+        if let tokenRegex = try? NSRegularExpression(pattern: tokenPattern) {
+            let nsLine = line as NSString
+            if let tokenMatch = tokenRegex.firstMatch(in: line, options: [], range: NSRange(location: 0, length: nsLine.length)) {
+                return nsLine.substring(with: tokenMatch.range(at: 1))
+            }
+        }
+        
+        // 2. Check environment variables for newer Antigravity versions (2.34+)
+        let envProcess = Process()
+        envProcess.executableURL = URL(fileURLWithPath: "/bin/ps")
+        envProcess.arguments = ["eww", "-p", pid]
+        let envPipe = Pipe()
+        envProcess.standardOutput = envPipe
+        
+        do {
+            try envProcess.run()
+            let envData = envPipe.fileHandleForReading.readDataToEndOfFile()
+            envProcess.waitUntilExit()
+            if let envOutput = String(data: envData, encoding: .utf8) {
+                let envPattern = "ANTIGRAVITY_SERVER_CSRF_TOKEN=([a-f0-9-]+)"
+                if let envRegex = try? NSRegularExpression(pattern: envPattern) {
+                    let nsEnv = envOutput as NSString
+                    if let match = envRegex.firstMatch(in: envOutput, options: [], range: NSRange(location: 0, length: nsEnv.length)) {
+                        return nsEnv.substring(with: match.range(at: 1))
+                    }
+                }
+            }
+        } catch {
+            print("Error reading process environment for pid \(pid): \(error)")
+        }
+        
+        return nil
+    }
+    
     func runAutoDetect() -> LSConfig? {
         // 1. Run ps aux to find the running language_server
         let psProcess = Process()
@@ -733,22 +789,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             let lines = psOutput.split(separator: "\n")
             for line in lines {
-                if line.contains("language_server") && line.contains("--csrf_token") {
-                    let lineStr = String(line)
+                let lineStr = String(line)
+                if lineStr.contains("language_server") && !lineStr.contains("grep") {
                     let nsLine = lineStr as NSString
-                    let tokenPattern = "--csrf_token\\s+([a-f0-9-]+)"
-                    let tokenRegex = try NSRegularExpression(pattern: tokenPattern)
-                    guard let tokenMatch = tokenRegex.firstMatch(in: lineStr, options: [], range: NSRange(location: 0, length: nsLine.length)) else {
-                        continue
-                    }
-                    let token = nsLine.substring(with: tokenMatch.range(at: 1))
-                    
                     let pidPattern = "^\\s*\\S+\\s+(\\d+)"
-                    let pidRegex = try NSRegularExpression(pattern: pidPattern)
-                    guard let pidMatch = pidRegex.firstMatch(in: lineStr, options: [], range: NSRange(location: 0, length: nsLine.length)) else {
+                    guard let pidRegex = try? NSRegularExpression(pattern: pidPattern),
+                          let pidMatch = pidRegex.firstMatch(in: lineStr, options: [], range: NSRange(location: 0, length: nsLine.length)) else {
                         continue
                     }
                     let pid = nsLine.substring(with: pidMatch.range(at: 1))
+                    
+                    guard let token = getLSToken(pid: pid, line: lineStr) else {
+                        continue
+                    }
                     
                     let ports = getLSPorts(pid: pid)
                     if !ports.isEmpty {
@@ -807,22 +860,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
-        tryNextPort(ports: config.ports, token: config.token, index: 0, completion: completion)
+        var endpoints: [URL] = []
+        for port in config.ports {
+            if let httpUrl = URL(string: "http://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") {
+                endpoints.append(httpUrl)
+            }
+            if let httpsUrl = URL(string: "https://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") {
+                endpoints.append(httpsUrl)
+            }
+        }
+        
+        tryNextEndpoint(endpoints: endpoints, token: config.token, index: 0, completion: completion)
     }
     
-    func tryNextPort(ports: [Int], token: String, index: Int, completion: @escaping (NSAttributedString) -> Void) {
-        guard index < ports.count else {
+    func tryNextEndpoint(endpoints: [URL], token: String, index: Int, completion: @escaping (NSAttributedString) -> Void) {
+        guard index < endpoints.count else {
             completion(NSAttributedString(string: " AG Quota: Err "))
             return
         }
         
-        let port = ports[index]
-        let urlString = "http://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
-        guard let url = URL(string: urlString) else {
-            tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
-            return
-        }
-        
+        let url = endpoints[index]
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -830,16 +887,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         request.httpBody = "{\"force_refresh\": true}".data(using: .utf8)
         request.timeoutInterval = 3.0
         
-        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
-                print("Fetch error for port \(port): \(error)")
-                self?.tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
+                print("Fetch error for url \(url): \(error)")
+                self?.tryNextEndpoint(endpoints: endpoints, token: token, index: index + 1, completion: completion)
                 return
             }
             
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let data = data else {
-                print("Invalid response or status code for port \(port)")
-                self?.tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
+                print("Invalid response or status code for url \(url)")
+                self?.tryNextEndpoint(endpoints: endpoints, token: token, index: index + 1, completion: completion)
                 return
             }
             
@@ -849,8 +906,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let formattedText = self?.formatQuotaSummary(quotaResponse) ?? NSAttributedString(string: "")
                 completion(formattedText)
             } catch {
-                print("Decoding error for port \(port): \(error)")
-                self?.tryNextPort(ports: ports, token: token, index: index + 1, completion: completion)
+                print("Decoding error for url \(url): \(error)")
+                self?.tryNextEndpoint(endpoints: endpoints, token: token, index: index + 1, completion: completion)
             }
         }
         task.resume()
