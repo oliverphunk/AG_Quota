@@ -28,17 +28,15 @@ fi
 echo "Codesigning app bundle..."
 codesign -s - --force --deep AGQuota.app
 
-# 5. Sync to /Applications/AGQuota.app if it exists and is writeable
-if [ -d "/Applications/AGQuota.app" ] && [ -w "/Applications/AGQuota.app" ]; then
-  echo "Syncing to /Applications/AGQuota.app..."
-  rm -rf /Applications/AGQuota.app
-  cp -R AGQuota.app /Applications/AGQuota.app
-fi
+# 5. Install to /Applications/AGQuota.app
+echo "Installing to /Applications/AGQuota.app..."
+rm -rf /Applications/AGQuota.app
+cp -R AGQuota.app /Applications/AGQuota.app
 
-# 6. Relaunch app
-echo "Restarting application..."
+# 6. Relaunch app from /Applications
+echo "Restarting application from /Applications..."
 killall AGQuota 2>/dev/null || true
 sleep 0.5
-open AGQuota.app || true
+open /Applications/AGQuota.app
 
 echo "=== Build and Run Successful! ==="
