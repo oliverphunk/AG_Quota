@@ -33,15 +33,17 @@ struct QuotaSummaryResponse: Codable {
 
 struct QuotaGroup: Codable {
     let displayName: String
+    let description: String?
     let buckets: [QuotaBucket]
 }
 
 struct QuotaBucket: Codable {
     let bucketId: String
     let displayName: String
+    let description: String?
     let remainingFraction: Double
-    let resetTime: String // ISO 8601 string
-    let window: String
+    let resetTime: String? // ISO 8601 string, optional (omitted by Antigravity when remainingFraction == 1.0)
+    let window: String?
 }
 
 struct LSConfig {
@@ -955,7 +957,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             for bucket in group.buckets {
                 var fraction = bucket.remainingFraction
-                if let resetDate = isoFormatter.date(from: bucket.resetTime), resetDate <= Date() {
+                if let resetTimeStr = bucket.resetTime, let resetDate = isoFormatter.date(from: resetTimeStr), resetDate <= Date() {
                     // Reset time has already elapsed, quota has refreshed
                     fraction = max(fraction, 1.0)
                 }
@@ -964,7 +966,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let pctStr = "\(pct)%"
                 
                 var timeStr = ""
-                if showRefreshTime, let date = isoFormatter.date(from: bucket.resetTime) {
+                if showRefreshTime, let resetTimeStr = bucket.resetTime, let date = isoFormatter.date(from: resetTimeStr) {
                     if date > Date() {
                         if bucket.window == "weekly" {
                             timeStr = " (\(weeklyFormatter.string(from: date)))"

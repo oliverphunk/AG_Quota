@@ -36,7 +36,7 @@ cp -R AGQuota.app /Applications/AGQuota.app
 # 6. Relaunch app from /Applications
 echo "Restarting application from /Applications..."
 killall AGQuota 2>/dev/null || true
-sleep 0.5
-open /Applications/AGQuota.app
+sleep 1
+open -n /Applications/AGQuota.app
 
 echo "=== Build and Run Successful! ==="
